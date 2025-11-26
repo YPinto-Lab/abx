@@ -1,6 +1,9 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import os
+from pathlib import Path
+import os
 
 ###############################################
 # config
@@ -85,7 +88,7 @@ def add_relative_to_baseline(df):
     """
     subj = df["subject"].iloc[0]
 
-    # דגימות שאפשר לשמש כ-baseline
+    # Samples that can be used as a baseline
     baseline_candidates = df[df["bucket"].isin(["pre-9w", "day0"])].copy()
 
     if baseline_candidates.empty:
@@ -121,18 +124,17 @@ def add_relative_to_baseline(df):
 
 debug("=== RUN START ===")
 debug("Loading datasets...")
-
+base_dir = os.getcwd()
 vir_cel = pd.read_csv(
-    "/Users/yarintamam/Downloads/sample_to_virus_and_cellular_org_pct.csv"
+    base_dir + "/sample_to_virus_and_cellular_org_pct.csv"
 )
 mapdf = pd.read_excel(
-    "/Users/yarintamam/Downloads/ciprofloxacin study/Subject To Sample.xlsx",
+    base_dir + "/Subject To Sample.xlsx",
     sheet_name="Supp. Table 1",
 )
 
 debug("Pivot viruses / cellular organisms to wide format...")
 
-# מתקבל לכל sample שורה אחת עם שני עמודות: pct_vir, pct_cel
 wide = (
     vir_cel
     .pivot_table(
@@ -149,6 +151,7 @@ wide = wide.rename(
         "cellular organisms": "pct_cel",
     }
 )
+
 
 ###############################################
 # merge with sample metadata
@@ -168,6 +171,17 @@ merged = merged.sort_values(["subject", "day"])
 
 debug(f"merged shape: {merged.shape}")
 debug(merged.head())
+
+###############################################
+# Filter Control subject
+###############################################
+
+control_subjects_to_delete = ["CAN", "CAC", "CAM", "CAK", "CAA"]
+
+merged = merged[~merged["subject"].isin(control_subjects_to_delete)].copy()
+
+debug(f"After removing controls {control_subjects_to_delete}, shape: {merged.shape}")
+debug(f"Remaining subjects: {sorted(merged['subject'].unique())}")
 
 ###############################################
 # assign buckets per subject
@@ -336,9 +350,10 @@ with PdfPages(pdf_path) as pdf:
     )
 
     for xi, (_, row) in enumerate(summary.iterrows()):
+        se = row["se_vir"] if pd.notna(row["se_vir"]) else 0
         axes_abs[0].text(
             xi,
-            row["mean_vir"] + (row["se_vir"] if pd.notna(row["se_vir"]) else 0) + 0.05,
+            row["mean_vir"] + se + 0.05,
             str(int(row["n_subjects"])),
             fontsize=8,
             ha="center",
@@ -361,9 +376,10 @@ with PdfPages(pdf_path) as pdf:
     )
 
     for xi, (_, row) in enumerate(summary.iterrows()):
+        se = row["se_cel"] if pd.notna(row["se_cel"]) else 0
         axes_abs[1].text(
             xi,
-            row["mean_cel"] + (row["se_cel"] if pd.notna(row["se_cel"]) else 0) + 0.05,
+            row["mean_cel"] + se + 0.05,
             str(int(row["n_subjects"])),
             fontsize=8,
             ha="center",
@@ -432,11 +448,11 @@ with PdfPages(pdf_path) as pdf:
     plt.close(fig_rel)
 
     ################################################
-    # PER SUBJECT PAGES
+    # PER SUBJECT PAGES – ABSOLUTE ONLY
     ################################################
 
     for subj in subjects:
-        debug(f"\nBuilding per-subject pages for {subj}")
+        debug(f"\nBuilding per-subject page for {subj}")
 
         subj_grp = merged[merged["subject"] == subj].copy()
         subj_grp = subj_grp[subj_grp["bucket"] != "other"]
@@ -453,7 +469,7 @@ with PdfPages(pdf_path) as pdf:
         )
         subj_grp = subj_grp.sort_values("bucket")
 
-        # ---------- per-subject absolute ----------
+        # per-subject absolute
         subj_summary_abs = (
             subj_grp
             .groupby("bucket", observed=True)
@@ -497,61 +513,6 @@ with PdfPages(pdf_path) as pdf:
         plt.tight_layout(rect=[0, 0.04, 1, 0.94])
         pdf.savefig(fig_s_abs)
         plt.close(fig_s_abs)
-
-        # ---------- per-subject relative ----------
-        subj_grp_rel = subj_grp[
-            subj_grp["pct_vir_rel"].notna() & subj_grp["pct_cel_rel"].notna()
-        ].copy()
-
-        if subj_grp_rel.empty:
-            debug(f"Subject {subj}: no relative data (no baseline), skipping relative page.")
-            continue
-
-        subj_summary_rel = (
-            subj_grp_rel
-            .groupby("bucket", observed=True)
-            .agg(
-                mean_vir_rel=("pct_vir_rel", "mean"),
-                mean_cel_rel=("pct_cel_rel", "mean"),
-            )
-            .reset_index()
-        )
-
-        debug(f"Subject {subj} summary (relative):")
-        debug(subj_summary_rel)
-
-        xs_rel_subj = range(len(subj_summary_rel))
-
-        fig_s_rel, axes_s_rel = plt.subplots(
-            2, 1,
-            figsize=(8.27, 11.69),
-            sharex=False
-        )
-        fig_s_rel.suptitle(f"Subject {subj} – relative to baseline", fontsize=14)
-
-        # VIR relative
-        axes_s_rel[0].plot(xs_rel_subj, subj_summary_rel["mean_vir_rel"], marker="o")
-        axes_s_rel[0].axhline(0, linestyle="--", linewidth=0.8)
-        axes_s_rel[0].grid(alpha=0.3)
-        axes_s_rel[0].set_ylabel("Δ% Viruses")
-        axes_s_rel[0].set_title("VIRUSES trend (per phase, relative to baseline)")
-        axes_s_rel[0].set_xlabel("Bucket")
-        axes_s_rel[0].set_xticks(xs_rel_subj)
-        axes_s_rel[0].set_xticklabels(subj_summary_rel["bucket"], rotation=45)
-
-        # CELLULAR relative
-        axes_s_rel[1].plot(xs_rel_subj, subj_summary_rel["mean_cel_rel"], marker="o")
-        axes_s_rel[1].axhline(0, linestyle="--", linewidth=0.8)
-        axes_s_rel[1].grid(alpha=0.3)
-        axes_s_rel[1].set_ylabel("Δ% cellular")
-        axes_s_rel[1].set_title("CELLULAR ORGANISMS trend (per phase, relative to baseline)")
-        axes_s_rel[1].set_xlabel("Bucket")
-        axes_s_rel[1].set_xticks(xs_rel_subj)
-        axes_s_rel[1].set_xticklabels(subj_summary_rel["bucket"], rotation=45)
-
-        plt.tight_layout(rect=[0, 0.04, 1, 0.94])
-        pdf.savefig(fig_s_rel)
-        plt.close(fig_s_rel)
 
 debug(f"\n\nPDF written to {pdf_path}\n")
 LOG_FILE.close()
