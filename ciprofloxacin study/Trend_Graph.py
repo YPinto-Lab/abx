@@ -113,8 +113,8 @@ def add_relative_to_baseline(df):
         f"pct_vir={b_vir}, pct_cel={b_cel}"
     )
 
-    df["pct_vir_rel"] = df["pct_vir"] - b_vir
-    df["pct_cel_rel"] = df["pct_cel"] - b_cel
+    df["pct_vir_rel"] = df["pct_vir"] / b_vir
+    df["pct_cel_rel"] = df["pct_cel"] / b_cel
 
     return df
 
@@ -448,7 +448,7 @@ with PdfPages(pdf_path) as pdf:
     plt.close(fig_rel)
 
     ################################################
-    # PER SUBJECT PAGES – ABSOLUTE ONLY
+    # PER SUBJECT PAGES
     ################################################
 
     for subj in subjects:
