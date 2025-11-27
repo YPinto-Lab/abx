@@ -1,1 +1,48 @@
 .DS_Store
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+/.venv
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Test / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Editor/IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Icon
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Logs / outputs
+*.log
+trend_debug.log
+per_subject_trends.pdf
+
+# caches
+.mypy_cache/
+.cache/
+

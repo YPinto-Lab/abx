@@ -1,46 +1,28 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-import os
-from pathlib import Path
-import os
+"""Thin compatibility wrapper so old code that runs Trend_Graph.py still works.
 
-###############################################
-# config
-###############################################
+This script delegates the work to the `ciprofloxacin_study` package that contains
+the refactored modules.
+"""
 
-# הסדר *הרצוי* של הפייזים בציר X
-PHASE_ORDER = [
-    "pre-9w",
-    "pre-2d",
-    "pre-1d",
-    "day0",
-    "day1",
-    "day2",
-    "day3",
-    "day4",
-    "day5",
-    "day6",
-    "day7",
-    "day8",
-    "day10",
-    "day18",
-    "day28",
-    "day77",
-]
+from ciprofloxacin_study.cli import main
 
-DEBUG = True
-LOG_FILE = open("trend_debug.log", "w")
 
-###############################################
-# utilities
-###############################################
+if __name__ == "__main__":
+    # Delegate to the refactored package and exit.
+    main()
+"""Thin compatibility wrapper so old code that runs Trend_Graph.py still works.
 
-def debug(msg):
-    if DEBUG:
-        print(msg)
-    LOG_FILE.write(str(msg) + "\n")
-    LOG_FILE.flush()
+This script delegates the work to the `ciprofloxacin_study` package that contains
+the refactored modules.
+"""
+
+from ciprofloxacin_study.cli import main
+
+
+if __name__ == "__main__":
+    # Delegate to the refactored package and exit.
+    main()
+
 
 ###############################################
 # assign buckets per subject (purely by order)
@@ -515,4 +497,4 @@ with PdfPages(pdf_path) as pdf:
         plt.close(fig_s_abs)
 
 debug(f"\n\nPDF written to {pdf_path}\n")
-LOG_FILE.close()
+# main() returns and logger will have flushed to trend_debug.log
