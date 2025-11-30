@@ -59,21 +59,29 @@ def add_relative_to_baseline(df):
 
     baseline_row = baseline_candidates.sort_values("baseline_order").iloc[0]
 
-    b_vir = baseline_row["pct_vir"]
-    b_cel = baseline_row["pct_cel"]
+    # baseline values may be missing; use .get to avoid KeyError
+    b_vir = baseline_row.get("pct_vir")
+    b_cel = baseline_row.get("pct_cel")
+    b_species = baseline_row.get("num_virus_species")
 
     logger.debug(
         f"Subject {subj}: baseline bucket={baseline_row['bucket']}, "
         f"pct_vir={b_vir}, pct_cel={b_cel}"
     )
 
-    df["pct_vir_rel"] = df["pct_vir"] / b_vir
-    df["pct_cel_rel"] = df["pct_cel"] / b_cel
+    # compute relative (fold change) if baseline exists; otherwise set NA
+    df["pct_vir_rel"] = df["pct_vir"] / b_vir if pd.notna(b_vir) else pd.NA
+    df["pct_cel_rel"] = df["pct_cel"] / b_cel if pd.notna(b_cel) else pd.NA
+
+    if "num_virus_species" in df.columns and pd.notna(b_species):
+        df["num_virus_species_rel"] = df["num_virus_species"] / b_species
+    else:
+        df["num_virus_species_rel"] = pd.NA
 
     return df
 
 
-def load_and_prepare_data(base_dir: str = None, vir_cel_csv: str = "sample_to_virus_and_cellular_org_pct.csv", mapfile: str = "Subject To Sample.xlsx", sheet_name: str = "Supp. Table 1"):
+def load_and_prepare_data(base_dir: str = None, vir_cel_csv: str = "sample_to_virus_and_cellular_org_pct.csv", mapfile: str = "Subject To Sample.xlsx", sheet_name: str = "Supp. Table 1", species_csv: str = "sample_to_num_of_virus_species.csv"):
     """Load CSV/Excel files, pivot to wide and merge as in original script.
 
     Returns the merged DataFrame (unsampled) after cleaning.
@@ -100,6 +108,18 @@ def load_and_prepare_data(base_dir: str = None, vir_cel_csv: str = "sample_to_vi
     wide = wide.rename(columns={"Viruses": "pct_vir", "cellular organisms": "pct_cel"})
 
     merged = wide.merge(mapdf, left_on="sample_name", right_on="library", how="inner")
+
+    # If a species-per-sample CSV is present, merge num_virus_species into merged.
+    species_path = os.path.join(base_dir, species_csv)
+    if os.path.exists(species_path):
+        logger.debug(f"Loading species counts from {species_path}")
+        species_df = pd.read_csv(species_path)
+        if "sample_name" in species_df.columns and "num_virus_species" in species_df.columns:
+            merged = merged.merge(species_df[["sample_name", "num_virus_species"]], on="sample_name", how="left")
+        else:
+            logger.debug("species CSV missing expected columns; skipping")
+    else:
+        logger.debug("no species CSV found; proceeding without num_virus_species")
 
     merged["day"] = pd.to_numeric(merged["day"], errors="coerce")
     merged = merged.sort_values(["subject", "day"])  # stable ordering
@@ -146,6 +166,8 @@ def compute_summary_tables(merged, phase_order=PHASE_ORDER):
             std_vir=("pct_vir", "std"),
             mean_cel=("pct_cel", "mean"),
             std_cel=("pct_cel", "std"),
+            mean_num_virus_species=("num_virus_species", "mean"),
+            std_num_virus_species=("num_virus_species", "std"),
             n_rows=("pct_vir", "count"),
             n_subjects=("subject", "nunique"),
         )
@@ -154,6 +176,8 @@ def compute_summary_tables(merged, phase_order=PHASE_ORDER):
 
     summary["se_vir"] = summary["std_vir"] / summary["n_rows"] ** 0.5
     summary["se_cel"] = summary["std_cel"] / summary["n_rows"] ** 0.5
+    if "std_num_virus_species" in summary.columns:
+        summary["se_num_virus_species"] = summary["std_num_virus_species"] / summary["n_rows"] ** 0.5
 
     summary = (
         summary.set_index("bucket").reindex(phase_order).dropna(subset=["mean_vir"]).reset_index()
@@ -175,6 +199,8 @@ def compute_summary_tables(merged, phase_order=PHASE_ORDER):
             std_vir_rel=("pct_vir_rel", "std"),
             mean_cel_rel=("pct_cel_rel", "mean"),
             std_cel_rel=("pct_cel_rel", "std"),
+            mean_num_virus_species_rel=("num_virus_species_rel", "mean"),
+            std_num_virus_species_rel=("num_virus_species_rel", "std"),
             n_rows=("pct_vir_rel", "count"),
             n_subjects=("subject", "nunique"),
         )
@@ -183,6 +209,8 @@ def compute_summary_tables(merged, phase_order=PHASE_ORDER):
 
     summary_rel["se_vir_rel"] = summary_rel["std_vir_rel"] / summary_rel["n_rows"] ** 0.5
     summary_rel["se_cel_rel"] = summary_rel["std_cel_rel"] / summary_rel["n_rows"] ** 0.5
+    if "std_num_virus_species_rel" in summary_rel.columns:
+        summary_rel["se_num_virus_species_rel"] = summary_rel["std_num_virus_species_rel"] / summary_rel["n_rows"] ** 0.5
 
     summary_rel = (
         summary_rel.set_index("bucket").reindex(phase_order).dropna(subset=["mean_vir_rel"]).reset_index()

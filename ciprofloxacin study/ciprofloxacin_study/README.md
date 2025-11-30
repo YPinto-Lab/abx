@@ -2,12 +2,17 @@
 
 This package contains a split-up version of the previous monolithic `Trend_Graph.py`.
 
-Modules:
+- Modules:
 - `config.py` — constants and defaults (PHASE_ORDER, DEFAULT_PDF_PATH)
 - `logger.py` — small logging helper writing to `trend_debug.log`
 - `processing.py` — data loading and aggregation utilities (assign_buckets, add_relative_to_baseline, compute_summary_tables)
 - `plotting.py` — functions to render the PDF report with matplotlib
 - `cli.py` — small entrypoint that ties everything together
+
+New: the package also ingests `sample_to_num_of_virus_species.csv` when present and
+will include additional summary and per-subject plots showing the number of
+"fold change (relative to baseline)" wording for relative plots (these are
+ratios rather than deltas).
 
 Run the report from the repository root (recommended) or the package folder:
 
