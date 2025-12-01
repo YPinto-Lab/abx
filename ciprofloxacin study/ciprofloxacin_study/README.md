@@ -11,6 +11,7 @@ This package contains a split-up version of the previous monolithic `Trend_Graph
 
 New: the package also ingests `sample_to_num_of_virus_species.csv` when present and
 will include additional summary and per-subject plots showing the number of
+viral species per sample (absolute and relative to baseline). The PDF now uses
 "fold change (relative to baseline)" wording for relative plots (these are
 ratios rather than deltas).
 
