@@ -1,4 +1,5 @@
 pypdf
+seaborn
 pandas
 matplotlib
 pytest

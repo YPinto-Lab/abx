@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
 from .config import DEFAULT_PDF_PATH, PHASE_ORDER
 from .logger import get_logger
@@ -18,6 +19,9 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
     subjects = sorted(merged["subject"].unique())
     x_abs = range(len(summary))
     x_rel = range(len(summary_rel))
+
+    # apply a clean seaborn theme for nicer default styling
+    sns.set_theme(style="whitegrid")
 
     with PdfPages(pdf_path) as pdf:
 
@@ -40,15 +44,20 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
         # Page 2 — SUMMARY absolute
         fig_abs, axes_abs = plt.subplots(2, 1, figsize=(8.27, 11.69), sharex=False)
 
-        axes_abs[0].errorbar(x_abs, summary["mean_vir"], yerr=summary["se_vir"], marker="o", linestyle="-", capsize=3)
+        sns.lineplot(x=list(x_abs), y=summary["mean_vir"], marker="o", ax=axes_abs[0])
+        # add se band if present
+        if "se_vir" in summary.columns and summary["se_vir"].notna().any():
+            axes_abs[0].fill_between(list(x_abs), summary["mean_vir"] - summary["se_vir"], summary["mean_vir"] + summary["se_vir"], alpha=0.2)
         for xi, (_, row) in enumerate(summary.iterrows()):
-            se = row["se_vir"] if row["se_vir"] is not None else 0
+            se = row["se_vir"] if pd.notna(row.get("se_vir")) else 0
             axes_abs[0].text(xi, row["mean_vir"] + se + 0.05, str(int(row["n_subjects"])), fontsize=8, ha="center", va="bottom", clip_on=True)
         axes_abs[0].set_ylabel("% Viruses")
         axes_abs[0].set_title("Mean VIRUS % per bucket (absolute)")
         axes_abs[0].grid(alpha=0.3)
 
-        axes_abs[1].errorbar(x_abs, summary["mean_cel"], yerr=summary["se_cel"], marker="s", linestyle="-", capsize=3)
+        sns.lineplot(x=list(x_abs), y=summary["mean_cel"], marker="s", ax=axes_abs[1])
+        if "se_cel" in summary.columns and summary["se_cel"].notna().any():
+            axes_abs[1].fill_between(list(x_abs), summary["mean_cel"] - summary["se_cel"], summary["mean_cel"] + summary["se_cel"], alpha=0.2)
         for xi, (_, row) in enumerate(summary.iterrows()):
             se = row["se_cel"] if row["se_cel"] is not None else 0
             axes_abs[1].text(xi, row["mean_cel"] + se + 0.05, str(int(row["n_subjects"])), fontsize=8, ha="center", va="bottom", clip_on=True)
@@ -68,13 +77,17 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
         # Page 3 — SUMMARY relative
         fig_rel, axes_rel = plt.subplots(2, 1, figsize=(8.27, 11.69), sharex=False)
 
-        axes_rel[0].errorbar(x_rel, summary_rel["mean_vir_rel"], yerr=summary_rel["se_vir_rel"], marker="o", linestyle="-", capsize=3)
+        sns.lineplot(x=list(x_rel), y=summary_rel["mean_vir_rel"], marker="o", ax=axes_rel[0])
+        if "se_vir_rel" in summary_rel.columns and summary_rel["se_vir_rel"].notna().any():
+            axes_rel[0].fill_between(list(x_rel), summary_rel["mean_vir_rel"] - summary_rel["se_vir_rel"], summary_rel["mean_vir_rel"] + summary_rel["se_vir_rel"], alpha=0.2)
         axes_rel[0].axhline(1.0 if pd.notna(summary_rel.get("mean_vir_rel").iloc[0]) else 0, linestyle="--", linewidth=0.8)
         axes_rel[0].set_ylabel("Fold change (relative to baseline)")
         axes_rel[0].set_title("Mean VIRUS % per bucket (relative to baseline — fold change)")
         axes_rel[0].grid(alpha=0.3)
 
-        axes_rel[1].errorbar(x_rel, summary_rel["mean_cel_rel"], yerr=summary_rel["se_cel_rel"], marker="s", linestyle="-", capsize=3)
+        sns.lineplot(x=list(x_rel), y=summary_rel["mean_cel_rel"], marker="s", ax=axes_rel[1])
+        if "se_cel_rel" in summary_rel.columns and summary_rel["se_cel_rel"].notna().any():
+            axes_rel[1].fill_between(list(x_rel), summary_rel["mean_cel_rel"] - summary_rel["se_cel_rel"], summary_rel["mean_cel_rel"] + summary_rel["se_cel_rel"], alpha=0.2)
         axes_rel[1].axhline(1.0 if pd.notna(summary_rel.get("mean_cel_rel").iloc[0]) else 0, linestyle="--", linewidth=0.8)
         axes_rel[1].set_ylabel("Fold change (relative to baseline)")
         axes_rel[1].set_title("Mean cellular organisms % per bucket (relative to baseline — fold change)")
@@ -100,7 +113,9 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
 
             # Top: absolute
             if sp_has_abs:
-                axes_sp[0].errorbar(x_abs, summary["mean_num_virus_species"], yerr=summary.get("se_num_virus_species", None), marker="o", linestyle='-', capsize=3)
+                sns.lineplot(x=list(x_abs), y=summary["mean_num_virus_species"], marker="o", ax=axes_sp[0])
+                if "se_num_virus_species" in summary.columns and pd.notna(summary.get("se_num_virus_species")).any():
+                    axes_sp[0].fill_between(list(x_abs), summary["mean_num_virus_species"] - summary.get("se_num_virus_species", 0), summary["mean_num_virus_species"] + summary.get("se_num_virus_species", 0), alpha=0.2)
                 for xi, (_, row) in enumerate(summary.iterrows()):
                     val = row.get("mean_num_virus_species")
                     if pd.notna(val):
@@ -118,7 +133,9 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
 
             # Bottom: relative (fold-change)
             if sp_has_rel:
-                axes_sp[1].errorbar(x_rel, summary_rel["mean_num_virus_species_rel"], yerr=summary_rel.get("se_num_virus_species_rel", None), marker="o", linestyle='-', capsize=3)
+                sns.lineplot(x=list(x_rel), y=summary_rel["mean_num_virus_species_rel"], marker="o", ax=axes_sp[1])
+                if "se_num_virus_species_rel" in summary_rel.columns and pd.notna(summary_rel.get("se_num_virus_species_rel")).any():
+                    axes_sp[1].fill_between(list(x_rel), summary_rel["mean_num_virus_species_rel"] - summary_rel.get("se_num_virus_species_rel", 0), summary_rel["mean_num_virus_species_rel"] + summary_rel.get("se_num_virus_species_rel", 0), alpha=0.2)
                 axes_sp[1].axhline(1.0, linestyle='--', linewidth=0.8)
                 axes_sp[1].set_ylabel("Fold change (relative to baseline)")
                 axes_sp[1].set_title("Mean # virus species per bucket (relative to baseline — fold change)")
@@ -245,7 +262,7 @@ def draw_subject_figure(subj_summary_abs: pd.DataFrame, subj: str):
     fig_s_abs, axes_s_abs = plt.subplots(3, 1, figsize=(8.27, 11.69), sharex=False)
     fig_s_abs.suptitle(f"Subject {subj} – absolute", fontsize=14)
 
-    axes_s_abs[0].plot(xs_abs, subj_summary_abs["mean_vir"], marker="o")
+    sns.lineplot(x=list(xs_abs), y=subj_summary_abs["mean_vir"], marker="o", ax=axes_s_abs[0])
     axes_s_abs[0].grid(alpha=0.3)
     axes_s_abs[0].set_ylabel("% Viruses")
     axes_s_abs[0].set_title("VIRUSES trend (per phase, absolute)")
@@ -271,7 +288,7 @@ def draw_subject_figure(subj_summary_abs: pd.DataFrame, subj: str):
                 # some backends may not support set_url; ignore gracefully
                 pass
 
-    axes_s_abs[1].plot(xs_abs, subj_summary_abs["mean_cel"], marker="o")
+    sns.lineplot(x=list(xs_abs), y=subj_summary_abs["mean_cel"], marker="o", ax=axes_s_abs[1])
     axes_s_abs[1].grid(alpha=0.3)
     axes_s_abs[1].set_ylabel("% cellular")
     axes_s_abs[1].set_title("CELLULAR ORGANISMS trend (per phase, absolute)")
@@ -292,7 +309,7 @@ def draw_subject_figure(subj_summary_abs: pd.DataFrame, subj: str):
 
     # species (if present)
     if "mean_num_virus_species" in subj_summary_abs.columns and subj_summary_abs["mean_num_virus_species"].notna().any():
-        axes_s_abs[2].plot(xs_abs, subj_summary_abs["mean_num_virus_species"], marker="o")
+        sns.lineplot(x=list(xs_abs), y=subj_summary_abs["mean_num_virus_species"], marker="o", ax=axes_s_abs[2])
         axes_s_abs[2].grid(alpha=0.3)
         axes_s_abs[2].set_ylabel("# virus species")
         axes_s_abs[2].set_title("# virus species trend (per phase, absolute)")
