@@ -170,6 +170,68 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
         # finished generating pages in the PdfPages context
     logger.debug(f"\n\nPDF written to {pdf_path}\n")
 
+    # attempt to add PDF outlines (bookmarks) for easier navigation in viewers
+    try:
+        add_pdf_outlines(pdf_path, subjects, sp_has_abs)
+    except Exception as exc:
+        import traceback
+        logger.debug("Could not add outlines to PDF: %s", exc)
+        logger.debug(traceback.format_exc())
+
+
+def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool):
+    """Add PDF outline entries for the generated report using pypdf.
+
+    Outline structure:
+      - Cover
+      - Summary — absolute
+      - Summary — relative
+      - Summary — species (optional)
+      - Per-subject pages
+          - Subject1
+          - Subject2
+
+    This function overwrites the existing PDF in place after adding bookmarks.
+    """
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except Exception:  # fallback message if library is missing
+        raise
+
+    reader = PdfReader(pdf_path)
+    writer = PdfWriter()
+
+    # copy pages to the writer
+    for p in reader.pages:
+        writer.add_page(p)
+
+    # page indexes are zero-based. pages order in the PDF:
+    # 0: cover, 1: summary abs, 2: summary rel, 3: species (if present), 3/4+: per-subject
+    writer.add_outline_item("Cover", 0)
+    writer.add_outline_item("Summary — absolute", 1)
+    writer.add_outline_item("Summary — relative", 2)
+
+    subj_start = 3
+    if has_species_page:
+        writer.add_outline_item("Summary — species", 3)
+        subj_start = 4
+
+    # top-level 'Per-subject pages' entry points to the first subject page
+    if len(subjects) > 0:
+        first_subj_page = subj_start if subj_start < len(reader.pages) else (len(reader.pages) - 1)
+        parent = writer.add_outline_item("Per-subject pages", first_subj_page)
+        # add each subject as a child under the parent
+        for idx, subj in enumerate(subjects):
+            page_index = subj_start + idx
+            if page_index >= len(reader.pages):
+                break
+            # color must be a tuple (r,g,b) or hex string; use blue RGB tuple
+            writer.add_outline_item(subj, page_index, parent=parent, color=(0, 0, 1), bold=True)
+
+    # overwrite original PDF
+    with open(pdf_path, "wb") as f:
+        writer.write(f)
+
 
 def draw_subject_figure(subj_summary_abs: pd.DataFrame, subj: str):
     """Create and return a matplotlib Figure for a single subject's absolute page.
