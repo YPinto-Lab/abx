@@ -43,31 +43,47 @@ def add_relative_to_baseline(df):
     """
     subj = df["subject"].iloc[0]
 
-    baseline_candidates = df[df["bucket"].isin(["pre-9w", "day0"])].copy()
 
-    if baseline_candidates.empty:
-        logger.debug(f"Subject {subj}: no baseline (pre-9w/day0), setting rel=NaN")
-        df["pct_vir_rel"] = pd.NA
-        df["pct_cel_rel"] = pd.NA
-        return df
+    # Preferred baseline buckets: average of pre-2d, pre-1d, and day0
+    baseline_buckets = ["pre-2d", "pre-1d", "day0"]
+    baseline_rows = df[df["bucket"].isin(baseline_buckets)].copy()
 
-    baseline_candidates["baseline_order"] = pd.Categorical(
-        baseline_candidates["bucket"],
-        categories=["pre-9w", "day0"],
-        ordered=True,
-    )
+    if not baseline_rows.empty:
+        # compute baseline as average of available pre-samples
+        b_vir = baseline_rows["pct_vir"].mean()
+        b_cel = baseline_rows["pct_cel"].mean()
+        b_species = baseline_rows["num_virus_species"].mean() if "num_virus_species" in baseline_rows.columns else None
+        logger.debug(
+            f"Subject {subj}: baseline from buckets {sorted(baseline_rows['bucket'].unique())} with mean pct_vir={b_vir}, pct_cel={b_cel}"
+        )
+    else:
+        # fallback to original behavior: prefer pre-9w then day0
+        baseline_candidates = df[df["bucket"].isin(["pre-9w", "day0"])].copy()
 
-    baseline_row = baseline_candidates.sort_values("baseline_order").iloc[0]
+        if baseline_candidates.empty:
+            logger.debug(f"Subject {subj}: no baseline (pre-2d/pre-1d/day0 or pre-9w/day0), setting rel=NaN")
+            df["pct_vir_rel"] = pd.NA
+            df["pct_cel_rel"] = pd.NA
+            df["num_virus_species_rel"] = pd.NA
+            return df
 
-    # baseline values may be missing; use .get to avoid KeyError
-    b_vir = baseline_row.get("pct_vir")
-    b_cel = baseline_row.get("pct_cel")
-    b_species = baseline_row.get("num_virus_species")
+        baseline_candidates["baseline_order"] = pd.Categorical(
+            baseline_candidates["bucket"],
+            categories=["pre-9w", "day0"],
+            ordered=True,
+        )
 
-    logger.debug(
-        f"Subject {subj}: baseline bucket={baseline_row['bucket']}, "
-        f"pct_vir={b_vir}, pct_cel={b_cel}"
-    )
+        baseline_row = baseline_candidates.sort_values("baseline_order").iloc[0]
+
+        # baseline values may be missing; use .get to avoid KeyError
+        b_vir = baseline_row.get("pct_vir")
+        b_cel = baseline_row.get("pct_cel")
+        b_species = baseline_row.get("num_virus_species")
+
+        logger.debug(
+            f"Subject {subj}: baseline bucket={baseline_row['bucket']}, "
+            f"pct_vir={b_vir}, pct_cel={b_cel}"
+        )
 
     # compute relative (fold change) if baseline exists; otherwise set NA
     df["pct_vir_rel"] = df["pct_vir"] / b_vir if pd.notna(b_vir) else pd.NA

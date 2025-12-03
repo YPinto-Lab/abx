@@ -74,6 +74,13 @@ def test_generate_pdf_creates_outlines():
         assert "Summary — relative" in titles
         assert "Per-subject pages" in titles
         assert "TS1" in titles
+
+        # also confirm explanation text for baseline is present on the relative-summary page
+        page2_text = reader.pages[2].extract_text()
+        assert page2_text is not None
+        assert "Baseline for fold-change" in page2_text
+        # ensure the collapsed 'baseline' bucket label appears on the relative page
+        assert "baseline" in page2_text.lower()
     finally:
         try:
             os.remove(path)
