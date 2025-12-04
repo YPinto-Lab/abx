@@ -125,13 +125,24 @@ def load_and_prepare_data(base_dir: str = None, vir_cel_csv: str = "sample_to_vi
 
     merged = wide.merge(mapdf, left_on="sample_name", right_on="library", how="inner")
 
-    # If a species-per-sample CSV is present, merge num_virus_species into merged.
+    # If a species-per-sample CSV is present, merge normalized class-level count into merged.
+    # Note: The column was renamed from num_virus_species to tax_id_normalized_to_class_level_count
     species_path = os.path.join(base_dir, species_csv)
     if os.path.exists(species_path):
         logger.debug(f"Loading species counts from {species_path}")
         species_df = pd.read_csv(species_path)
-        if "sample_name" in species_df.columns and "num_virus_species" in species_df.columns:
+        # Handle both old column name (num_virus_species) and new column name (tax_id_normalized_to_class_level_count)
+        species_col = None
+        if "tax_id_normalized_to_class_level_count" in species_df.columns:
+            species_col = "tax_id_normalized_to_class_level_count"
+        elif "num_virus_species" in species_df.columns:
+            species_col = "num_virus_species"
+        
+        if "sample_name" in species_df.columns and species_col:
+            # Rename to internal name for consistency
+            species_df = species_df.rename(columns={species_col: "num_virus_species"})
             merged = merged.merge(species_df[["sample_name", "num_virus_species"]], on="sample_name", how="left")
+            logger.debug(f"Merged species data using column: {species_col}")
         else:
             logger.debug("species CSV missing expected columns; skipping")
     else:
@@ -240,3 +251,65 @@ def compute_summary_tables(merged, phase_order=PHASE_ORDER):
 
 def get_subjects(merged):
     return sorted(merged["subject"].unique())
+
+
+def load_virus_taxa_ranks(base_dir: str = None, taxa_csv: str = "virus_taxa_count_by_rank.csv"):
+    """Load and process virus taxonomic rank distribution (count of distinct taxa per rank).
+    
+    Returns a DataFrame with columns ['rank', 'num_taxa'] sorted by count descending,
+    suitable for plotting.
+    """
+    if base_dir is None:
+        base_dir = os.getcwd()
+    base_dir = str(Path(base_dir))
+    
+    taxa_path = os.path.join(base_dir, taxa_csv)
+    if not os.path.exists(taxa_path):
+        logger.debug(f"Virus taxa CSV not found at {taxa_path}")
+        return None
+    
+    logger.debug(f"Loading virus taxa ranks from {taxa_path}")
+    taxa_df = pd.read_csv(taxa_path)
+    
+    # Clean up: remove rows with blank rank (unclassified) for cleaner visualization
+    # but keep it if it has meaningful count
+    taxa_df = taxa_df[taxa_df['rank'].notna() & (taxa_df['rank'] != '')]
+    
+    # Sort by count descending for visual impact
+    taxa_df = taxa_df.sort_values('num_taxa', ascending=False).reset_index(drop=True)
+    
+    logger.debug(f"Loaded {len(taxa_df)} taxonomic ranks")
+    logger.debug(taxa_df.head(10))
+    
+    return taxa_df
+
+
+def load_virus_taxa_reads(base_dir: str = None, reads_csv: str = "self_count_per_taxa_rank.csv"):
+    """Load and process read distribution per taxonomic rank (self_count).
+    
+    Returns a DataFrame with columns ['rank', 'reads_at_rank'] sorted by reads descending.
+    This shows how many reads were directly assigned to each taxonomic rank.
+    """
+    if base_dir is None:
+        base_dir = os.getcwd()
+    base_dir = str(Path(base_dir))
+    
+    reads_path = os.path.join(base_dir, reads_csv)
+    if not os.path.exists(reads_path):
+        logger.debug(f"Virus taxa reads CSV not found at {reads_path}")
+        return None
+    
+    logger.debug(f"Loading virus taxa read distribution from {reads_path}")
+    reads_df = pd.read_csv(reads_path)
+    
+    # Convert reads to numeric in case they're strings
+    if 'reads_at_rank' in reads_df.columns:
+        reads_df['reads_at_rank'] = pd.to_numeric(reads_df['reads_at_rank'], errors='coerce')
+    
+    # Sort by reads descending
+    reads_df = reads_df.sort_values('reads_at_rank', ascending=False).reset_index(drop=True)
+    
+    logger.debug(f"Loaded {len(reads_df)} taxonomic ranks with read counts")
+    logger.debug(reads_df.head(10))
+    
+    return reads_df

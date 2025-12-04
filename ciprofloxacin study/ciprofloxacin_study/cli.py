@@ -5,7 +5,7 @@ script and is kept intentionally simple (no heavy argument parsing required).
 """
 from pathlib import Path
 from .logger import get_logger
-from .processing import load_and_prepare_data, filter_controls, compute_summary_tables
+from .processing import load_and_prepare_data, filter_controls, compute_summary_tables, load_virus_taxa_ranks, load_virus_taxa_reads
 from .plotting import generate_pdf
 from .config import DEFAULT_PDF_PATH
 
@@ -21,11 +21,15 @@ def main(base_dir: str = None, pdf_out: str = None):
     merged = filter_controls(merged)
 
     merged, summary, summary_rel = compute_summary_tables(merged)
+    
+    # Load optional taxa data for visualization
+    taxa_df = load_virus_taxa_ranks(base_dir=base_dir)
+    taxa_reads_df = load_virus_taxa_reads(base_dir=base_dir)
 
     if pdf_out is None:
         pdf_out = DEFAULT_PDF_PATH
 
-    generate_pdf(merged, summary, summary_rel, pdf_path=pdf_out)
+    generate_pdf(merged, summary, summary_rel, pdf_path=pdf_out, taxa_df=taxa_df, taxa_reads_df=taxa_reads_df)
 
     logger.debug("Done — output written to %s" % pdf_out)
 

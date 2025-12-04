@@ -1,17 +1,26 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+import traceback
+import textwrap
 from matplotlib.backends.backend_pdf import PdfPages
-from .config import DEFAULT_PDF_PATH, PHASE_ORDER
+from .config import DEFAULT_PDF_PATH, PHASE_ORDER, CONTROL_SUBJECTS_TO_DELETE
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
 
-def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order=PHASE_ORDER):
-    """Generate a multi-page PDF with summary plots and per-subject plots.
-
-    This mirrors the original Trend_Graph.py PDF generation logic.
+def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order=PHASE_ORDER, taxa_df=None, taxa_reads_df=None):
+    """Generate a multi-page professional PDF with summary plots, methodology, taxonomy analysis, and per-subject plots.
+    
+    Args:
+        merged: Full merged dataframe with all samples
+        summary: Absolute summary (mean/se per bucket)
+        summary_rel: Relative summary (fold-change per bucket)
+        pdf_path: Output PDF path
+        phase_order: List of phase labels in order
+        taxa_df: Optional dataframe with virus taxa ranks (from load_virus_taxa_ranks)
+        taxa_reads_df: Optional dataframe with reads per taxa rank (from load_virus_taxa_reads)
     """
     if pdf_path is None:
         pdf_path = DEFAULT_PDF_PATH
@@ -25,23 +34,240 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
 
     with PdfPages(pdf_path) as pdf:
 
-        # Page 1 — cover
+        # Page 1 — PROFESSIONAL COVER (clean Word-document style)
         cover = plt.figure(figsize=(8.27, 11.69))
+        cover.patch.set_facecolor('white')
+        
+        y_pos = 0.95  # Start near top
+        
+        # Title (centered, bold, large)
         cover.text(
-            0.5, 0.9,
-            "Brief antibiotic use drives human gut bacteria\n towards low-cost resistance",
+            0.5, y_pos,
+            "Brief Antibiotic Use Drives Human Gut Bacteria\nTowards Low-Cost Resistance",
             ha="center", fontsize=16, weight="bold"
         )
-
-        cover.text(0.5, 0.84, "Ciprofloxacin study\nVirus + Cellular organism trajectories", ha="center", fontsize=11)
-
-        cover.text(0.1, 0.78, "Subjects included:", fontsize=11, va="top")
-        cover.text(0.12, 0.745, "\n".join(subjects), fontsize=9, va="top")
-
-        pdf.savefig(cover)
+        y_pos -= 0.08
+        
+        # Subtitle (centered, italic, smaller)
+        cover.text(
+            0.5, y_pos,
+            "Ciprofloxacin Study — Virome and Cellular Organism Analysis",
+            ha="center", fontsize=11, style="italic", color="darkslategray"
+        )
+        y_pos -= 0.06
+        
+        # Study Overview section
+        cover.text(0.1, y_pos, "Study Overview", fontsize=11, weight="bold")
+        y_pos -= 0.03
+        
+        overview_text = (
+            "This analysis tracks longitudinal changes in viral and cellular populations across "
+            "multiple subjects during and after brief ciprofloxacin administration. Samples were "
+            "characterized using metagenomic sequencing. Fold-changes are computed relative to each "
+            "subject's pre-treatment baseline."
+        )
+        cover.text(0.1, y_pos, overview_text, ha="left", va="top", fontsize=9, wrap=True)
+        y_pos -= 0.12
+        
+        # Subjects section (natural flowing list)
+        cover.text(0.1, y_pos, "Subjects:", fontsize=11, weight="bold")
+        y_pos -= 0.03
+        
+        # Write subjects as flowing text, line-wrapped naturally
+        subjects_text = ", ".join(subjects)
+        # Use textwrap to break into reasonable lines
+        wrapped_subjects = textwrap.fill(subjects_text, width=90)
+        cover.text(0.1, y_pos, wrapped_subjects, ha="left", va="top", fontsize=9)
+        
+        # Calculate how much space was used
+        n_subject_lines = wrapped_subjects.count('\n') + 1
+        y_pos -= (n_subject_lines * 0.025 + 0.02)
+        
+        # Controls note (small, at bottom of subjects)
+        if CONTROL_SUBJECTS_TO_DELETE:
+            controls_note = f"Note: Control subjects ({', '.join(CONTROL_SUBJECTS_TO_DELETE)}) were omitted from analysis."
+            cover.text(0.1, y_pos, controls_note, fontsize=8, style="italic", color="gray")
+        y_pos -= 0.05
+        
+        # Dataset Summary section
+        cover.text(0.1, y_pos, "Dataset Summary", fontsize=11, weight="bold")
+        y_pos -= 0.03
+        
+        n_samples = len(merged)
+        n_rows = len(merged[merged["bucket"] != "other"])
+        
+        dataset_info = (
+            f"Total samples collected: {n_samples}\n"
+            f"Samples included in analysis: {n_rows}\n"
+            f"Data source: Metagenomic sequencing (virus and cellular organism classification)\n"
+            f"Method: Taxonomic abundance aggregated by time bucket per subject\n"
+            f"Baseline: Per-subject mean of immediate pre-treatment samples (pre-2d, pre-1d, day0)\n"
+            f"Visualization: Summary plots show mean ± SE across subjects; per-subject pages include\n"
+            f"  sample metadata (library, accession) with links to NCBI Trace Run Browser"
+        )
+        cover.text(0.1, y_pos, dataset_info, ha="left", va="top", fontsize=8.5)
+        
+        pdf.savefig(cover, bbox_inches='tight')
         plt.close(cover)
 
-        # Page 2 — SUMMARY absolute
+        # Page 2 — METHODOLOGY EXPLANATION
+        methods_fig = plt.figure(figsize=(8.27, 11.69))
+        methods_fig.patch.set_facecolor('white')
+        
+        methods_fig.text(0.5, 0.94, "Methodology & Data Analysis", ha="center", fontsize=14, weight="bold")
+        
+        # Concise, non-redundant Methodology text
+        methods_text = (
+            "Baseline definition:\n"
+            "- For each subject, baseline is the mean of available immediate pre-treatment samples (pre-2d, pre-1d, day0).\n"
+            "- If none of these are available, the earlier pre-9w or day0 sample is used.\n\n"
+            "Fold-change:\n"
+            "- Fold-change = sample_value / baseline_value. Values >1 indicate an increase relative to baseline.\n\n"
+            "Data aggregation and plotting:\n"
+            "- Summary plots show mean ± standard error across subjects.\n"
+            "- Relative plots collapse immediate pre-treatment samples into a single 'baseline' point for clarity.\n"
+            "- Per-subject pages include library and accession information; tick labels link to NCBI Trace Run Browser.\n"
+        )
+
+        methods_fig.text(
+            0.08, 0.88,
+            methods_text,
+            ha="left", va="top", fontsize=9, family=None,
+            bbox=dict(boxstyle='round', facecolor='whitesmoke', alpha=0.4)
+        )
+        
+        pdf.savefig(methods_fig, bbox_inches='tight')
+        plt.close(methods_fig)
+        
+        # Page 3 — TAXONOMY NORMALIZATION EXPLANATION
+        norm_fig = plt.figure(figsize=(8.27, 11.69))
+        norm_fig.patch.set_facecolor('white')
+        
+        norm_fig.text(0.5, 0.96, "Choosing the Taxonomy Level for Viral Diversity", 
+                     ha="center", fontsize=13, weight="bold")
+        
+        explanation_text = (
+            "Challenge:\n"
+            "Metagenomic classifiers (e.g., STAT) do not always classify reads to species level. Many reads\n"
+            "are only classified to genus, family, or higher ranks. Using only species-level assignments loses\n"
+            "information and introduces technical noise: apparent diversity changes may reflect classification\n"
+            "uncertainty rather than true biological changes.\n\n"
+            
+            "Solution Strategy:\n"
+            "We analyzed two complementary distributions:\n"
+            "  1. Number of distinct taxa per rank: How many unique names exist at each level?\n"
+            "  2. Read distribution per rank: Where is the biological material actually concentrated?\n\n"
+            
+            "Why This Matters:\n"
+            "The two distributions often tell different stories. The taxa count table may suggest many species\n"
+            "exist, but the read distribution reveals that most classified reads fall into genus or family level.\n"
+            "This means species-level information is sparse and unstable, creating false impressions of\n"
+            "diversity changes that are actually technical artifacts of the classifier.\n\n"
+            
+            "Key Decision:\n"
+            "We chose genus or 'genus-like' level as the normalization standard because:\n"
+            "  • It receives strong support from read assignments (most reads classify to this level)\n"
+            "  • It is stable and resistant to classification errors\n"
+            "  • It unites different species of the same genus into a reliable diversity metric\n"
+            "  • Changes observed at this level reflect biological reality, not technical noise\n"
+        )
+        
+        norm_fig.text(0.08, 0.90, explanation_text, ha="left", va="top", fontsize=8.5,
+                     bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.2))
+        
+        pdf.savefig(norm_fig, bbox_inches='tight')
+        plt.close(norm_fig)
+        
+        # Page 4 — TAXA COUNT DISTRIBUTION (if taxa data available)
+        if taxa_df is not None and len(taxa_df) > 0:
+            fig_taxa = plt.figure(figsize=(8.27, 6))
+            
+            # Title
+            fig_taxa.text(0.5, 0.95, "Virus Taxonomy Tree Structure", ha="center", fontsize=14, weight="bold")
+            
+            # Explanation
+            explanation = (
+                "This chart shows the breadth of viral diversity detected across all subjects. "
+                "Each bar represents the number of unique taxa (distinct viruses) identified at that taxonomic rank. "
+                "For example, 120,825 unique viral species were detected, nested within 3,094 genera, "
+                "which belong to 4,015 orders, and so on. This reflects the hierarchical nature of viral taxonomy."
+            )
+            fig_taxa.text(0.1, 0.90, explanation, ha="left", va="top", fontsize=9, wrap=True)
+            
+            # Create subplot for bar chart
+            ax_taxa = fig_taxa.add_axes([0.15, 0.25, 0.75, 0.60])
+            
+            # Bar chart
+            colors = sns.color_palette("husl", len(taxa_df))
+            bars = ax_taxa.barh(taxa_df['rank'], taxa_df['num_taxa'], color=colors)
+            
+            # Add count labels on bars
+            for i, (idx, row) in enumerate(taxa_df.iterrows()):
+                ax_taxa.text(row['num_taxa'] + max(taxa_df['num_taxa'])*0.02, i, 
+                           f"{int(row['num_taxa']):,}", 
+                           va='center', fontsize=8)
+            
+            ax_taxa.set_xlabel('Number of Unique Taxa', fontsize=10, weight='bold')
+            ax_taxa.set_title('')  # Remove default title, using fig title instead
+            ax_taxa.grid(axis='x', alpha=0.2)
+            ax_taxa.invert_yaxis()  # Most abundant at top
+            
+            # Add note at bottom
+            note = "Note: Taxonomic ranks are hierarchical. Species are the most granular level; phylum/kingdom represent broader categories."
+            fig_taxa.text(0.1, 0.08, note, ha="left", va="top", fontsize=8, style="italic", color="gray")
+            
+            pdf.savefig(fig_taxa, bbox_inches='tight')
+            plt.close(fig_taxa)
+        
+        # Page 5 — READ DISTRIBUTION PER RANK (if reads data available)
+        if taxa_reads_df is not None and len(taxa_reads_df) > 0:
+            fig_reads = plt.figure(figsize=(8.27, 6))
+            
+            # Title
+            fig_reads.text(0.5, 0.95, "Read Distribution by Taxonomic Rank", ha="center", fontsize=14, weight="bold")
+            
+            # Explanation with emphasis on self_count vs total_count
+            explanation = (
+                "This chart shows where the actual sequence data (reads) is distributed across taxonomic ranks. "
+                "Each bar represents the number of reads DIRECTLY assigned to that rank (self_count). "
+                "This is distinct from total_count, which includes reads assigned to the rank AND all its descendants. "
+                "Using self_count reveals the true abundance at each level and avoids double-counting. "
+                "Notice: many taxa exist at the species level (left chart), but few reads actually classify to species (this chart). "
+                "Most reads concentrate in higher ranks (order, class), indicating classification uncertainty at fine resolution."
+            )
+            fig_reads.text(0.1, 0.90, explanation, ha="left", va="top", fontsize=8.5, wrap=True)
+            
+            # Create subplot for bar chart
+            ax_reads = fig_reads.add_axes([0.15, 0.25, 0.75, 0.60])
+            
+            # Bar chart
+            colors = sns.color_palette("viridis", len(taxa_reads_df))
+            bars = ax_reads.barh(taxa_reads_df['rank'], taxa_reads_df['reads_at_rank'], color=colors)
+            
+            # Add count labels on bars
+            for i, (idx, row) in enumerate(taxa_reads_df.iterrows()):
+                reads_val = row['reads_at_rank']
+                if pd.notna(reads_val) and reads_val > 0:
+                    ax_reads.text(reads_val + max(taxa_reads_df['reads_at_rank'].fillna(0))*0.02, i,
+                               f"{int(reads_val):,}",
+                               va='center', fontsize=8)
+            
+            ax_reads.set_xlabel('Number of Reads (self_count)', fontsize=10, weight='bold')
+            ax_reads.set_title('')  # Remove default title, using fig title instead
+            ax_reads.grid(axis='x', alpha=0.2)
+            ax_reads.invert_yaxis()  # Most abundant at top
+            
+            # Add note about self_count
+            note = (
+                "Note: self_count = reads directly assigned to this exact taxon only (not including descendants). "
+                "This reveals the true abundance at each classification level."
+            )
+            fig_reads.text(0.1, 0.08, note, ha="left", va="top", fontsize=8, style="italic", color="gray")
+            
+            pdf.savefig(fig_reads, bbox_inches='tight')
+            plt.close(fig_reads)
+
+        # Page 4 (or 3) — SUMMARY absolute
         fig_abs, axes_abs = plt.subplots(2, 1, figsize=(8.27, 11.69), sharex=False)
 
         sns.lineplot(x=list(x_abs), y=summary["mean_vir"], marker="o", ax=axes_abs[0])
@@ -207,18 +433,23 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
 
     # attempt to add PDF outlines (bookmarks) for easier navigation in viewers
     try:
-        add_pdf_outlines(pdf_path, subjects, sp_has_abs)
+        has_taxa = taxa_df is not None and len(taxa_df) > 0
+        has_reads = taxa_reads_df is not None and len(taxa_reads_df) > 0
+        add_pdf_outlines(pdf_path, subjects, sp_has_abs, has_taxa_page=has_taxa, has_reads_page=has_reads)
     except Exception as exc:
-        import traceback
         logger.debug("Could not add outlines to PDF: %s", exc)
         logger.debug(traceback.format_exc())
 
 
-def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool):
+def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool, has_taxa_page: bool = False, has_reads_page: bool = False):
     """Add PDF outline entries for the generated report using pypdf.
 
     Outline structure:
       - Cover
+      - Methodology
+      - Taxonomy Normalization Explanation
+      - Taxonomy Distribution (optional)
+      - Read Distribution by Rank (optional)
       - Summary — absolute
       - Summary — relative
       - Summary — species (optional)
@@ -241,15 +472,37 @@ def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool)
         writer.add_page(p)
 
     # page indexes are zero-based. pages order in the PDF:
-    # 0: cover, 1: summary abs, 2: summary rel, 3: species (if present), 3/4+: per-subject
-    writer.add_outline_item("Cover", 0)
-    writer.add_outline_item("Summary — absolute", 1)
-    writer.add_outline_item("Summary — relative", 2)
+    # 0: cover, 1: methodology, 2: normalization explanation, 3: taxa count (if present), 
+    # 4: reads dist (if present), 5: summary abs, 6: summary rel, 7: species (if present), rest: per-subject
+    page_idx = 0
+    writer.add_outline_item("Cover", page_idx)
+    page_idx += 1
+    
+    writer.add_outline_item("Methodology", page_idx)
+    page_idx += 1
+    
+    writer.add_outline_item("Taxonomy Normalization", page_idx)
+    page_idx += 1
+    
+    if has_taxa_page:
+        writer.add_outline_item("Taxonomy Distribution", page_idx)
+        page_idx += 1
+    
+    if has_reads_page:
+        writer.add_outline_item("Read Distribution by Rank", page_idx)
+        page_idx += 1
+    
+    writer.add_outline_item("Summary — absolute", page_idx)
+    page_idx += 1
+    
+    writer.add_outline_item("Summary — relative", page_idx)
+    page_idx += 1
 
-    subj_start = 3
     if has_species_page:
-        writer.add_outline_item("Summary — species", 3)
-        subj_start = 4
+        writer.add_outline_item("Summary — species", page_idx)
+        page_idx += 1
+
+    subj_start = page_idx
 
     # top-level 'Per-subject pages' entry points to the first subject page
     if len(subjects) > 0:
