@@ -1,16 +1,56 @@
+def plot_graphs_on_page(pdf, graph_fns, titles=None, page_title=None):
+    """
+    Plot 1-3 graphs on a single A4 page, enforcing layout rules.
+    graph_fns: list of functions that accept (ax) and plot on it.
+    titles: list of subplot titles.
+    page_title: optional page-level title.
+    """
+    from matplotlib import gridspec
+    n_graphs = len(graph_fns)
+    fig = plt.figure(figsize=(8.27, 11.69))  # A4 in inches
+    if n_graphs == 1:
+        # Use gridspec to center the graph in half the page
+        gs = gridspec.GridSpec(2, 1, height_ratios=[1,1], figure=fig)
+        ax = fig.add_subplot(gs[1])  # lower half
+        fig.subplots_adjust(top=0.95, bottom=0.05, left=0.12, right=0.95)
+        graph_fns[0](ax)
+        if titles:
+            ax.set_title(titles[0], fontsize=16, pad=20)
+        # Remove upper half axis (empty)
+        ax_empty = fig.add_subplot(gs[0])
+        ax_empty.axis('off')
+    elif n_graphs in [2,3]:
+        gs = gridspec.GridSpec(n_graphs, 1, figure=fig)
+        axes = [fig.add_subplot(gs[i]) for i in range(n_graphs)]
+        fig.subplots_adjust(top=0.95, bottom=0.08, left=0.12, right=0.95, hspace=0.35)
+        for i, ax in enumerate(axes):
+            graph_fns[i](ax)
+            if titles and i < len(titles):
+                ax.set_title(titles[i], fontsize=14, pad=12)
+    else:
+        raise ValueError("Only 1-3 graphs per page are supported by layout rule.")
+    if page_title:
+        fig.suptitle(page_title, fontsize=18, y=0.99)
+    pdf.savefig(fig, dpi=150)
+    plt.close(fig)
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import traceback
 import textwrap
+import numpy as np
+import matplotlib.ticker as mticker
 from matplotlib.backends.backend_pdf import PdfPages
 from .config import DEFAULT_PDF_PATH, PHASE_ORDER, CONTROL_SUBJECTS_TO_DELETE
 from .logger import get_logger
+from .figures.layout import plot_graphs_on_page
+from .figures.figures import plot_superkingdom_abs, plot_superkingdom_frac, plot_superkingdom_frac_rel
 
 logger = get_logger(__name__)
 
 
-def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order=PHASE_ORDER, taxa_df=None, taxa_reads_df=None):
+def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order=PHASE_ORDER, taxa_df=None, taxa_reads_df=None, summary_sk=None, summary_sk_rel=None, merged_sk=None):
     """Generate a multi-page professional PDF with summary plots, methodology, taxonomy analysis, and per-subject plots.
     
     Args:
@@ -29,8 +69,30 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
     x_abs = range(len(summary))
     x_rel = range(len(summary_rel))
 
-    # apply a clean seaborn theme for nicer default styling
+    # apply a clean seaborn theme and consistent rc settings for A4 output
+    A4_SIZE = (8.27, 11.69)
     sns.set_theme(style="whitegrid")
+    plt.rcParams.update({
+        'figure.figsize': A4_SIZE,
+        'figure.dpi': 150,
+        'axes.titlesize': 14,
+        'axes.labelsize': 11,
+        'xtick.labelsize': 9,
+        'ytick.labelsize': 9,
+        'legend.fontsize': 9,
+        'font.size': 10,
+        'lines.linewidth': 2,
+        # ensure consistent subplot margins/proportions so figures occupy a similar
+        # proportion of each A4 page instead of being auto-cropped to content
+        'figure.subplot.left': 0.12,
+        'figure.subplot.right': 0.95,
+        'figure.subplot.top': 0.92,
+        'figure.subplot.bottom': 0.08,
+        'figure.subplot.hspace': 0.35,
+        'figure.subplot.wspace': 0.2,
+    })
+    # consistent color choices for the report
+    COLORS = {'abs': 'C0', 'frac': 'C1', 'rel': 'C2'}
 
     with PdfPages(pdf_path) as pdf:
 
@@ -107,7 +169,7 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
         )
         cover.text(0.1, y_pos, dataset_info, ha="left", va="top", fontsize=8.5)
         
-        pdf.savefig(cover, bbox_inches='tight')
+        pdf.savefig(cover)
         plt.close(cover)
 
         # Page 2 — METHODOLOGY EXPLANATION
@@ -136,7 +198,7 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
             bbox=dict(boxstyle='round', facecolor='whitesmoke', alpha=0.4)
         )
         
-        pdf.savefig(methods_fig, bbox_inches='tight')
+        pdf.savefig(methods_fig)
         plt.close(methods_fig)
         
         # Page 3 — TAXONOMY NORMALIZATION EXPLANATION
@@ -175,12 +237,12 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
         norm_fig.text(0.08, 0.90, explanation_text, ha="left", va="top", fontsize=8.5,
                      bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.2))
         
-        pdf.savefig(norm_fig, bbox_inches='tight')
+        pdf.savefig(norm_fig)
         plt.close(norm_fig)
         
         # Page 4 — TAXA COUNT DISTRIBUTION (if taxa data available)
         if taxa_df is not None and len(taxa_df) > 0:
-            fig_taxa = plt.figure(figsize=(8.27, 6))
+            fig_taxa = plt.figure(figsize=A4_SIZE)
             
             # Title
             fig_taxa.text(0.5, 0.95, "Virus Taxonomy Tree Structure", ha="center", fontsize=14, weight="bold")
@@ -216,12 +278,12 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
             note = "Note: Taxonomic ranks are hierarchical. Species are the most granular level; phylum/kingdom represent broader categories."
             fig_taxa.text(0.1, 0.08, note, ha="left", va="top", fontsize=8, style="italic", color="gray")
             
-            pdf.savefig(fig_taxa, bbox_inches='tight')
+            pdf.savefig(fig_taxa)
             plt.close(fig_taxa)
         
         # Page 5 — READ DISTRIBUTION PER RANK (if reads data available)
         if taxa_reads_df is not None and len(taxa_reads_df) > 0:
-            fig_reads = plt.figure(figsize=(8.27, 6))
+            fig_reads = plt.figure(figsize=A4_SIZE)
             
             # Title
             fig_reads.text(0.5, 0.95, "Read Distribution by Taxonomic Rank", ha="center", fontsize=14, weight="bold")
@@ -264,10 +326,40 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
             )
             fig_reads.text(0.1, 0.08, note, ha="left", va="top", fontsize=8, style="italic", color="gray")
             
-            pdf.savefig(fig_reads, bbox_inches='tight')
+            pdf.savefig(fig_reads)
             plt.close(fig_reads)
 
-        # Page 4 (or 3) — SUMMARY absolute
+        # Pages — SUPERKINGDOM READ DATA (one page per superkingdom for clarity)
+        if summary_sk is not None and len(summary_sk) > 0 and merged_sk is not None:
+            # determine kingdoms present (expect columns like mean_Bacteria, mean_Viruses, etc.)
+            possible_kingdoms = ['Bacteria', 'Viruses', 'Archaea', 'Eukaryota']
+            present_kingdoms = [k for k in possible_kingdoms if f'mean_{k}' in summary_sk.columns or k in merged_sk.columns]
+
+            for kingdom in present_kingdoms:
+                # Group up to 3 related superkingdom plots on the same page when possible.
+                graph_fns = [
+                    (lambda k: (lambda ax: plot_superkingdom_abs(ax, summary_sk, k, COLORS)))(kingdom),
+                    (lambda k: (lambda ax: plot_superkingdom_frac(ax, summary_sk, k, COLORS)))(kingdom),
+                ]
+                titles = [
+                    f"{kingdom} Reads — Absolute (mean ± SE)",
+                    f"{kingdom} Fraction of Total Reads — Absolute (mean ± SE)",
+                ]
+
+                # Optionally include the relative (fold-change) plot
+                if summary_sk_rel is not None and len(summary_sk_rel) > 0:
+                    graph_fns.append((lambda k: (lambda ax: plot_superkingdom_frac_rel(ax, summary_sk_rel, k, COLORS)))(kingdom))
+                    titles.append(f"{kingdom} Fraction Fold-Change Relative to Baseline")
+
+                # `plot_graphs_on_page` supports 1-3 plots; pass the grouped lists so
+                # small plots are stacked and avoid wasting a whole A4 page per single plot.
+                plot_graphs_on_page(pdf, graph_fns, titles=titles, page_title=None)
+            
+            # per-kingdom pages already saved above; no consolidated
+            # `fig_sk_rel` is required. The loop saved each kingdom's
+            # relative/fraction page individually.
+
+        # Page 8 (or later) — SUMMARY absolute
         fig_abs, axes_abs = plt.subplots(2, 1, figsize=(8.27, 11.69), sharex=False)
 
         sns.lineplot(x=list(x_abs), y=summary["mean_vir"], marker="o", ax=axes_abs[0])
@@ -427,6 +519,54 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
             fig_s_abs = draw_subject_figure(subj_summary_abs, subj)
             pdf.savefig(fig_s_abs)
             plt.close(fig_s_abs)
+            
+            # Per-subject superkingdom trends (if available)
+            if merged_sk is not None and subj in merged_sk['subject'].unique():
+                subj_sk_grp = merged_sk[merged_sk["subject"] == subj].copy()
+                subj_sk_grp = subj_sk_grp[subj_sk_grp["bucket"] != "other"]
+                
+                if not subj_sk_grp.empty:
+                    # Get superkingdom columns
+                    sk_cols = [col for col in merged_sk.columns if col not in merged.columns 
+                              and col not in ['bucket', 'pct_vir', 'pct_cel', 'subject', 'day', 'library', 'acc', 
+                                            'sample_name', 'num_virus_species']]
+                    sk_cols = [col for col in sk_cols if not col.endswith('_rel') and col not in ['subject', 'acc', 'sample_name']]
+                    
+                    # Remove duplicate columns (keep only the superkingdom names)
+                    sk_cols = [col for col in ['Bacteria', 'Viruses', 'Archaea', 'Eukaryota'] if col in merged_sk.columns]
+                    
+                    if sk_cols:
+                        subj_sk_grp["bucket"] = pd.Categorical(subj_sk_grp["bucket"], categories=phase_order, ordered=True)
+                        subj_sk_grp = subj_sk_grp.sort_values("bucket")
+                        x_subj_sk = range(len(subj_sk_grp))
+
+                        # For each kingdom, create a dedicated page: top = absolute reads, bottom = fraction
+                        for kingdom in [k for k in ['Bacteria', 'Viruses', 'Archaea', 'Eukaryota'] if k in subj_sk_grp.columns]:
+                            fig_k_subj, axes_k_subj = plt.subplots(2, 1, figsize=(8.27, 11.69), sharex=True)
+                            fig_k_subj.suptitle(f"{kingdom} reads for subject {subj}", fontsize=14, weight='bold')
+
+                            # Top: absolute reads (log scale for readability)
+                            axes_k_subj[0].plot(x_subj_sk, subj_sk_grp[kingdom], marker='o', color=COLORS['abs'])
+                            axes_k_subj[0].set_yscale('log')
+                            axes_k_subj[0].set_ylabel('Total Reads (log scale)', fontsize=10, weight='bold')
+                            axes_k_subj[0].grid(alpha=0.3)
+
+                            # Bottom: fraction (if available)
+                            frac_col = f"{kingdom}_frac"
+                            if frac_col in subj_sk_grp.columns:
+                                axes_k_subj[1].plot(x_subj_sk, subj_sk_grp[frac_col], marker='o', color=COLORS['frac'])
+                                axes_k_subj[1].set_ylabel('Fraction of total reads', fontsize=10, weight='bold')
+                            else:
+                                axes_k_subj[1].text(0.5, 0.5, 'No fraction data for this subject/kingdom', ha='center', va='center')
+                                axes_k_subj[1].axis('off')
+
+                            axes_k_subj[1].set_xticks(x_subj_sk)
+                            axes_k_subj[1].set_xticklabels(subj_sk_grp['bucket'], rotation=45, ha='right')
+                            axes_k_subj[1].set_xlabel('Time Bucket', fontsize=10, weight='bold')
+
+                            plt.tight_layout(rect=[0.05, 0.03, 0.98, 0.95])
+                            pdf.savefig(fig_k_subj)
+                            plt.close(fig_k_subj)
 
         # finished generating pages in the PdfPages context
     logger.debug(f"\n\nPDF written to {pdf_path}\n")
@@ -435,13 +575,13 @@ def generate_pdf(merged, summary, summary_rel, pdf_path: str = None, phase_order
     try:
         has_taxa = taxa_df is not None and len(taxa_df) > 0
         has_reads = taxa_reads_df is not None and len(taxa_reads_df) > 0
-        add_pdf_outlines(pdf_path, subjects, sp_has_abs, has_taxa_page=has_taxa, has_reads_page=has_reads)
+        add_pdf_outlines(pdf_path, subjects, sp_has_abs, has_taxa_page=has_taxa, has_reads_page=has_reads, has_sk_page=(summary_sk is not None))
     except Exception as exc:
         logger.debug("Could not add outlines to PDF: %s", exc)
         logger.debug(traceback.format_exc())
 
 
-def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool, has_taxa_page: bool = False, has_reads_page: bool = False):
+def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool, has_taxa_page: bool = False, has_reads_page: bool = False, has_sk_page: bool = False):
     """Add PDF outline entries for the generated report using pypdf.
 
     Outline structure:
@@ -450,12 +590,14 @@ def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool,
       - Taxonomy Normalization Explanation
       - Taxonomy Distribution (optional)
       - Read Distribution by Rank (optional)
+      - Summary — superkingdom absolute (optional)
+      - Summary — superkingdom relative (optional)
       - Summary — absolute
       - Summary — relative
       - Summary — species (optional)
       - Per-subject pages
-          - Subject1
-          - Subject2
+          - Subject1 (+ superkingdom trends)
+          - Subject2 (+ superkingdom trends)
 
     This function overwrites the existing PDF in place after adding bookmarks.
     """
@@ -473,7 +615,8 @@ def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool,
 
     # page indexes are zero-based. pages order in the PDF:
     # 0: cover, 1: methodology, 2: normalization explanation, 3: taxa count (if present), 
-    # 4: reads dist (if present), 5: summary abs, 6: summary rel, 7: species (if present), rest: per-subject
+    # 4: reads dist (if present), 5-6: superkingdom absolute/relative (if present),
+    # 7: summary abs, 8: summary rel, 9: species (if present), rest: per-subject (with possible sk trends)
     page_idx = 0
     writer.add_outline_item("Cover", page_idx)
     page_idx += 1
@@ -490,6 +633,13 @@ def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool,
     
     if has_reads_page:
         writer.add_outline_item("Read Distribution by Rank", page_idx)
+        page_idx += 1
+    
+    if has_sk_page:
+        writer.add_outline_item("Superkingdom Read Abundance", page_idx)
+        page_idx += 1
+        
+        writer.add_outline_item("Superkingdom Read Abundance (Fold-Change)", page_idx)
         page_idx += 1
     
     writer.add_outline_item("Summary — absolute", page_idx)
@@ -509,8 +659,10 @@ def add_pdf_outlines(pdf_path: str, subjects: list[str], has_species_page: bool,
         first_subj_page = subj_start if subj_start < len(reader.pages) else (len(reader.pages) - 1)
         parent = writer.add_outline_item("Per-subject pages", first_subj_page)
         # add each subject as a child under the parent
+        # Each subject now has 1 base page plus up to 4 superkingdom pages when has_sk_page
+        pages_per_subject = 1 + (4 if has_sk_page else 0)
         for idx, subj in enumerate(subjects):
-            page_index = subj_start + idx
+            page_index = subj_start + (idx * pages_per_subject)
             if page_index >= len(reader.pages):
                 break
             # color must be a tuple (r,g,b) or hex string; use blue RGB tuple
