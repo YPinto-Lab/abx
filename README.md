@@ -4,7 +4,9 @@ Antibiotics sub-group
 Run the ciprofloxacin report
 ---------------------------
 
-From the repository root you can run the report (produces per_subject_trends.pdf):
+From the repository root you can run the report (produces per_subject_trends.pdf). Data
+inputs now live under `ciprofloxacin study/data`, and the runner locates them
+automatically:
 
 ```bash
 # use your project venv (recommended)

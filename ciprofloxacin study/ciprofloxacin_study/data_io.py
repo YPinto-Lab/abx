@@ -12,6 +12,15 @@ from .config import CONTROL_SUBJECTS_TO_DELETE
 logger = get_logger(__name__)
 
 
+def _resolve_data_path(base_dir: str, filename: str, data_dirname: str = "data") -> Path:
+    """Return a Path for filename preferring <base_dir>/data/<filename> when present."""
+    base = Path(base_dir)
+    data_path = base / data_dirname / filename
+    if data_path.exists():
+        return data_path
+    return base / filename
+
+
 def load_and_prepare_data(base_dir: str = None,
                           vir_cel_csv: str = "sample_to_virus_and_cellular_org_pct.csv",
                           mapfile: str = "Subject To Sample.xlsx",
@@ -27,8 +36,8 @@ def load_and_prepare_data(base_dir: str = None,
 
     logger.debug("Loading datasets...")
 
-    vir_cel_path = os.path.join(base_dir, vir_cel_csv)
-    map_path = os.path.join(base_dir, mapfile)
+    vir_cel_path = _resolve_data_path(base_dir, vir_cel_csv)
+    map_path = _resolve_data_path(base_dir, mapfile)
 
     vir_cel = pd.read_csv(vir_cel_path)
     mapdf = pd.read_excel(map_path, sheet_name=sheet_name)
@@ -45,8 +54,8 @@ def load_and_prepare_data(base_dir: str = None,
     merged = wide.merge(mapdf, left_on="sample_name", right_on="library", how="inner")
 
     # If a species-per-sample CSV is present, merge normalized class-level count into merged.
-    species_path = os.path.join(base_dir, species_csv)
-    if os.path.exists(species_path):
+    species_path = _resolve_data_path(base_dir, species_csv)
+    if species_path.exists():
         logger.debug(f"Loading species counts from {species_path}")
         species_df = pd.read_csv(species_path)
         species_col = None
@@ -79,8 +88,8 @@ def load_virus_taxa_ranks(base_dir: str = None, taxa_csv: str = "virus_taxa_coun
         base_dir = os.getcwd()
     base_dir = str(Path(base_dir))
 
-    taxa_path = os.path.join(base_dir, taxa_csv)
-    if not os.path.exists(taxa_path):
+    taxa_path = _resolve_data_path(base_dir, taxa_csv)
+    if not taxa_path.exists():
         logger.debug(f"Virus taxa CSV not found at {taxa_path}")
         return None
 
@@ -99,8 +108,8 @@ def load_virus_taxa_reads(base_dir: str = None, reads_csv: str = "self_count_per
         base_dir = os.getcwd()
     base_dir = str(Path(base_dir))
 
-    reads_path = os.path.join(base_dir, reads_csv)
-    if not os.path.exists(reads_path):
+    reads_path = _resolve_data_path(base_dir, reads_csv)
+    if not reads_path.exists():
         logger.debug(f"Virus taxa reads CSV not found at {reads_path}")
         return None
 
@@ -120,8 +129,8 @@ def load_superkingdom_reads(base_dir: str = None, sk_csv: str = "reads_total_cou
         base_dir = os.getcwd()
     base_dir = str(Path(base_dir))
 
-    sk_path = os.path.join(base_dir, sk_csv)
-    if not os.path.exists(sk_path):
+    sk_path = _resolve_data_path(base_dir, sk_csv)
+    if not sk_path.exists():
         logger.debug(f"Superkingdom reads CSV not found at {sk_path}")
         return None
 

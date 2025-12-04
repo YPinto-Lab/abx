@@ -23,20 +23,15 @@ if (pkg_parent / "ciprofloxacin_study").exists():
 from ciprofloxacin_study.cli import main
 
 
+def _pick_base_dir():
+    """Prefer a directory that contains the data/ folder when available."""
+    data_file = "sample_to_virus_and_cellular_org_pct.csv"
+    candidates = [ROOT, ROOT / "ciprofloxacin study"]
+    for cand in candidates:
+        if (cand / "data" / data_file).exists() or (cand / data_file).exists():
+            return str(cand)
+    return str(ROOT)
+
+
 if __name__ == "__main__":
-    # Choose the correct data-containing folder as base_dir. Data files live
-    # in the repo but inside the "ciprofloxacin study" folder in this tree,
-    # so prefer that folder when it exists — this makes the runner work when
-    # pressing Run from the repo root.
-    candidate1 = ROOT
-    candidate2 = ROOT / "ciprofloxacin study"
-
-    if (candidate1 / "sample_to_virus_and_cellular_org_pct.csv").exists():
-        base_dir = str(candidate1)
-    elif (candidate2 / "sample_to_virus_and_cellular_org_pct.csv").exists():
-        base_dir = str(candidate2)
-    else:
-        # fallback — use repo root
-        base_dir = str(ROOT)
-
-    main(base_dir=base_dir)
+    main(base_dir=_pick_base_dir())

@@ -15,7 +15,8 @@ viral species per sample (absolute and relative to baseline). The PDF now uses
 "fold change (relative to baseline)" wording for relative plots (these are
 ratios rather than deltas).
 
-Run the report from the repository root (recommended) or the package folder:
+Run the report from the repository root (recommended) or the package folder.
+Data inputs are stored in `ciprofloxacin study/data` and are auto-discovered:
 
 ```bash
 # repository root — this script will run from the root and find the datafiles
